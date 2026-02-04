@@ -1,5 +1,6 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { v4 as uuidv4 } from 'uuid';
+import bcrypt from 'bcrypt';
 import { CasinoEngine } from './casino-engine';
 import { db } from './db';
 import { users } from '../shared/schema';
@@ -242,35 +243,54 @@ export function setupWebSocket(wss: WebSocketServer) {
   }, 50);
   
   wss.on('connection', async (ws: WebSocket) => {
-    const sessionUserId = (ws as any).userId as string | undefined;
-    const isAuthenticated = (ws as any).authenticated as boolean;
-    
-    if (!isAuthenticated || !sessionUserId) {
-      sendTo(ws, { type: 'authFailed', reason: 'Not authenticated' });
-      ws.close(4001, 'Unauthorized');
-      return;
-    }
-    
-    const [player] = await db.select().from(users).where(eq(users.id, sessionUserId)).limit(1);
-    if (!player || player.role !== 'player' || !player.isActive) {
-      sendTo(ws, { type: 'authFailed', reason: 'Invalid player or account disabled' });
-      ws.close(4001, 'Unauthorized');
-      return;
-    }
-    
-    const currentPlayerId = player.id;
+    let currentPlayerId: string | null = null;
     let currentTable: FishGameTable | null = null;
-    
-    playerConnections.set(currentPlayerId, ws);
-    sendTo(ws, { type: 'authSuccess', player: { id: player.id, username: player.username, points: player.points } });
     
     ws.on('message', async (data: Buffer) => {
       try {
         const message = JSON.parse(data.toString());
         
         switch (message.type) {
+          case 'login':
+            const { username, password } = message;
+            if (!username || !password) {
+              sendTo(ws, { type: 'loginFailed', reason: 'Username and password required' });
+              return;
+            }
+            
+            const [user] = await db.select().from(users).where(eq(users.username, username)).limit(1);
+            if (!user || !await bcrypt.compare(password, user.password)) {
+              sendTo(ws, { type: 'loginFailed', reason: 'Invalid credentials' });
+              return;
+            }
+            if (!user.isActive) {
+              sendTo(ws, { type: 'loginFailed', reason: 'Account is disabled' });
+              return;
+            }
+            if (user.role !== 'player') {
+              sendTo(ws, { type: 'loginFailed', reason: 'Only players can login via game client' });
+              return;
+            }
+            
+            currentPlayerId = user.id;
+            (ws as any).authenticated = true;
+            (ws as any).userId = user.id;
+            playerConnections.set(currentPlayerId, ws);
+            sendTo(ws, { 
+              type: 'loginSuccess', 
+              player: { id: user.id, username: user.username, role: user.role, points: user.points } 
+            });
+            break;
+            
           case 'auth':
-            sendTo(ws, { type: 'authSuccess', player: { id: player.id, username: player.username, points: player.points } });
+            if (!currentPlayerId) {
+              sendTo(ws, { type: 'authFailed', reason: 'Not logged in' });
+              return;
+            }
+            const [player] = await db.select().from(users).where(eq(users.id, currentPlayerId)).limit(1);
+            if (player) {
+              sendTo(ws, { type: 'authSuccess', player: { id: player.id, username: player.username, points: player.points } });
+            }
             break;
             
           case 'joinFishGame':

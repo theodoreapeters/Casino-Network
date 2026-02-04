@@ -48,22 +48,9 @@ const wss = new WebSocketServer({ noServer: true });
 
 httpServer.on('upgrade', (request, socket, head) => {
   if (request.url === '/ws') {
-    const res = new ServerResponse(request);
-    res.assignSocket(socket as any);
-    
-    sessionMiddleware(request as any, res as any, () => {
-      const session = (request as any).session;
-      
-      if (session && session.userId && session.role === 'player') {
-        wss.handleUpgrade(request, socket, head, (ws) => {
-          (ws as any).userId = session.userId;
-          (ws as any).authenticated = true;
-          wss.emit('connection', ws, request);
-        });
-      } else {
-        socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
-        socket.destroy();
-      }
+    wss.handleUpgrade(request, socket, head, (ws) => {
+      (ws as any).authenticated = false;
+      wss.emit('connection', ws, request);
     });
   } else {
     socket.destroy();
