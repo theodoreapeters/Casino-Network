@@ -1,0 +1,178 @@
+Below is a strict technical review: what is now correct, what is still missing, and what (if anything) you should change before calling this “done”.
+
+1) Protocol Status: Now Correct (FACT)
+
+Your WebSocket protocol is now internally consistent.
+
+gameState
+
+You now correctly include:
+
+seq — monotonic per tick
+
+serverTime — ms timestamp
+
+Absolute positions
+
+Velocity (vx, vy)
+
+Player cannon state
+
+This satisfies all robustness requirements discussed earlier.
+
+✅ No contradictions remain between:
+
+Tick model
+
+Payload semantics
+
+Client guidance
+
+2) Ordering & Timing Guarantees (FACT)
+
+Your documentation now clearly states:
+
+Tick rate = 20 Hz
+
+gameState every tick
+
+Absolute coordinates
+
+Snapshot model
+
+And you explicitly document:
+
+if (msg.seq <= lastSeq) return;
+
+
+This closes the largest correctness gap from earlier.
+
+3) Interpolation Guidance: Mostly Correct, One Adjustment Needed
+
+Your interpolation section is conceptually correct, but there is one subtle issue.
+
+Current doc code (problematic edge case)
+const elapsed = renderTime - this.prevState.serverTime;
+
+
+This assumes:
+
+renderTime and serverTime share a time basis
+
+They do not.
+
+FACT:
+renderTime is client-local time.
+serverTime is server-local time.
+
+You need a time offset.
+
+4) Required Fix: Server–Client Time Offset (Small but Important)
+Minimal Correct Model
+
+On receiving a gameState:
+
+const now = Date.now();
+this.serverTimeOffset = now - msg.serverTime;
+
+
+Then during rendering:
+
+const estimatedServerNow = Date.now() - this.serverTimeOffset;
+const elapsed = estimatedServerNow - this.prevState.serverTime;
+
+
+This does not require clock sync.
+It only requires relative alignment.
+
+Why This Matters (FACT)
+
+Without this:
+
+Interpolation will jitter under latency
+
+Browser stalls cause visible snapping
+
+This is not theoretical — it will happen.
+
+5) Velocity Usage: Correctly Scoped
+
+Your doc correctly states:
+
+Velocity is optional
+
+Used only for smoothing
+
+Server remains authoritative
+
+This is correct and complete.
+
+No change needed.
+
+6) Client-Side Prediction Statement: One Correction
+
+Your doc says:
+
+TCP guarantees ordering (WebSocket over TCP)
+
+This is technically true, but misleading in this context.
+
+Correction (FACT)
+
+TCP guarantees delivery order, not processing order or timeliness.
+
+You already solved this with seq, so the sentence should be softened.
+
+Recommended wording change:
+
+Although WebSocket runs over TCP, clients should still use seq to guard against delayed or stale packets.
+
+This avoids future confusion.
+
+7) Client Code: Still One Missing Piece
+
+Your provided WebSocketClient.ts is fine as a transport layer.
+
+However, nowhere in the sample code do you show:
+
+Where lastSeq is stored
+
+Where stale packets are dropped
+
+Where interpolation state is buffered
+
+This is acceptable for a transport example, but you should add one explicit note:
+
+Packet ordering and interpolation are handled in the game layer, not in WebSocketClient.
+
+Otherwise devs may implement it in the wrong place.
+
+8) Final Assessment (Explicit)
+Protocol design
+
+✅ Correct
+✅ Robust
+✅ Scales cleanly
+✅ Appropriate for 20 Hz authoritative server
+
+Documentation
+
+✅ Now accurate
+⚠️ One small timing clarification needed
+
+Client guidance
+
+✅ Correct direction
+⚠️ Needs server–client time offset note
+
+9) Minimal Final Changes I Recommend
+
+You only need three small edits:
+
+Add server–client time offset example
+
+Clarify TCP ordering vs stale packets
+
+State where seq/interpolation logic belongs (game layer)
+
+After that, this is production-grade.
