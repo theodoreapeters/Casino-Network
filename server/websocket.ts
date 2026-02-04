@@ -48,6 +48,15 @@ const playerConnections = new Map<string, WebSocket>();
 const GAME_WIDTH = 1200;
 const GAME_HEIGHT = 800;
 
+const tableSequences = new Map<string, number>();
+
+function getNextSequence(tableId: string): number {
+  const current = tableSequences.get(tableId) || 0;
+  const next = current + 1;
+  tableSequences.set(tableId, next);
+  return next;
+}
+
 const fishTypes = [
   { name: 'smallFish', multiplier: 2, weight: 0.5, speed: 3 },
   { name: 'mediumFish', multiplier: 5, weight: 0.3, speed: 2 },
@@ -210,6 +219,8 @@ function updateGame(table: FishGameTable) {
   
   broadcast(table, {
     type: 'gameState',
+    seq: getNextSequence(table.id),
+    serverTime: Date.now(),
     fish: Array.from(table.fish.values()),
     bullets: Array.from(table.bullets.values()),
     players: Array.from(table.players.entries()).map(([id, p]) => ({

@@ -193,16 +193,20 @@ All messages are JSON objects with a `type` field.
 }
 ```
 
-#### Game State Update (every frame)
+#### Game State Update (every tick, 20 Hz / 50ms interval)
 ```json
 {
   "type": "gameState",
+  "seq": 12345,
+  "serverTime": 1707012345678,
   "fish": [
     {
       "id": "fish-uuid",
       "type": "smallFish",
       "x": 100,
-      "y": 200
+      "y": 200,
+      "vx": 2.5,
+      "vy": 0.5
     }
   ],
   "bullets": [
@@ -210,7 +214,17 @@ All messages are JSON objects with a `type` field.
       "id": "bullet-uuid",
       "playerId": "player-uuid",
       "x": 150,
-      "y": 300
+      "y": 300,
+      "vx": 10,
+      "vy": -5
+    }
+  ],
+  "players": [
+    {
+      "id": "player-uuid",
+      "seatIndex": 0,
+      "cannonAngle": 45,
+      "betAmount": 10
     }
   ]
 }
@@ -254,6 +268,74 @@ All messages are JSON objects with a `type` field.
   "message": "Insufficient points"
 }
 ```
+
+## Protocol Details for Client Implementation
+
+### Tick Rate and Timing
+- **Server tick rate**: 20 Hz (50ms interval)
+- **gameState frequency**: Sent every tick (20 times per second)
+- **Fish/bullet positions**: Absolute coordinates (not relative/delta)
+
+### Sequence Numbers (`seq`)
+Every `gameState` message includes a monotonically increasing sequence number per table. Use this to:
+- Drop stale packets that arrive out of order
+- Simplify reconnection logic
+
+**Client handling:**
+```typescript
+private lastSeq: number = 0;
+
+handleGameState(msg: any) {
+  if (msg.seq <= this.lastSeq) {
+    return; // Drop stale packet
+  }
+  this.lastSeq = msg.seq;
+  // Process game state...
+}
+```
+
+### Server Timestamp (`serverTime`)
+Each `gameState` includes `serverTime` (Unix timestamp in milliseconds). Use this for:
+- Estimating one-way delay
+- Time-based interpolation between snapshots
+- Smoothing jitter
+- Recovering gracefully after browser stalls
+
+**Interpolation strategy:**
+Since the server sends absolute positions at 20 Hz and the client renders at ~60 FPS, you'll want to interpolate between the two most recent snapshots. Use `serverTime` to compute the interpolation factor.
+
+```typescript
+private prevState: GameState | null = null;
+private currState: GameState | null = null;
+
+handleGameState(msg: GameState) {
+  if (msg.seq <= (this.currState?.seq || 0)) return;
+  
+  this.prevState = this.currState;
+  this.currState = msg;
+}
+
+interpolate(renderTime: number): InterpolatedState {
+  if (!this.prevState || !this.currState) return this.currState;
+  
+  const duration = this.currState.serverTime - this.prevState.serverTime;
+  const elapsed = renderTime - this.prevState.serverTime;
+  const t = Math.min(1, Math.max(0, elapsed / duration));
+  
+  // Lerp positions between prevState and currState using t
+  return lerpStates(this.prevState, this.currState, t);
+}
+```
+
+### Client-Side Prediction
+**Not strictly required** for this architecture because:
+- TCP guarantees ordering (WebSocket over TCP)
+- Server is authoritative for all outcomes
+- Positions are absolute, not delta-compressed
+
+However, for smoother visuals you may want to:
+- Extrapolate fish positions using their velocity (`vx`, `vy`) between ticks
+- Show bullet firing immediately on input, then reconcile with server state
 
 ## Cocos Creator 3 Setup
 
