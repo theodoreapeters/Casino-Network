@@ -301,25 +301,51 @@ Each `gameState` includes `serverTime` (Unix timestamp in milliseconds). Use thi
 - Smoothing jitter
 - Recovering gracefully after browser stalls
 
+**Important: Server-Client Time Offset**
+
+`serverTime` and `Date.now()` are on different clocks. You must calculate an offset to align them:
+
+```typescript
+private serverTimeOffset: number = 0;
+
+handleGameState(msg: GameState) {
+  // Calculate offset on each packet (smoothed in production)
+  this.serverTimeOffset = Date.now() - msg.serverTime;
+  // ... rest of handling
+}
+
+getEstimatedServerTime(): number {
+  return Date.now() - this.serverTimeOffset;
+}
+```
+
 **Interpolation strategy:**
-Since the server sends absolute positions at 20 Hz and the client renders at ~60 FPS, you'll want to interpolate between the two most recent snapshots. Use `serverTime` to compute the interpolation factor.
+
+Since the server sends absolute positions at 20 Hz and the client renders at ~60 FPS, you'll want to interpolate between the two most recent snapshots. Use `serverTime` with the offset to compute the interpolation factor.
 
 ```typescript
 private prevState: GameState | null = null;
 private currState: GameState | null = null;
+private serverTimeOffset: number = 0;
 
 handleGameState(msg: GameState) {
   if (msg.seq <= (this.currState?.seq || 0)) return;
+  
+  // Update time offset
+  this.serverTimeOffset = Date.now() - msg.serverTime;
   
   this.prevState = this.currState;
   this.currState = msg;
 }
 
-interpolate(renderTime: number): InterpolatedState {
+interpolate(): InterpolatedState {
   if (!this.prevState || !this.currState) return this.currState;
   
+  // Use estimated server time, not raw client time
+  const estimatedServerNow = Date.now() - this.serverTimeOffset;
+  
   const duration = this.currState.serverTime - this.prevState.serverTime;
-  const elapsed = renderTime - this.prevState.serverTime;
+  const elapsed = estimatedServerNow - this.prevState.serverTime;
   const t = Math.min(1, Math.max(0, elapsed / duration));
   
   // Lerp positions between prevState and currState using t
@@ -327,15 +353,29 @@ interpolate(renderTime: number): InterpolatedState {
 }
 ```
 
+Without this offset, interpolation will jitter under latency, and browser stalls will cause visible snapping.
+
 ### Client-Side Prediction
 **Not strictly required** for this architecture because:
-- TCP guarantees ordering (WebSocket over TCP)
 - Server is authoritative for all outcomes
 - Positions are absolute, not delta-compressed
+
+**Note on TCP ordering:** Although WebSocket runs over TCP (which guarantees delivery order), clients should still use `seq` to guard against delayed or stale packets. Network jitter and browser processing delays can cause packets to be handled out of order at the application layer.
 
 However, for smoother visuals you may want to:
 - Extrapolate fish positions using their velocity (`vx`, `vy`) between ticks
 - Show bullet firing immediately on input, then reconcile with server state
+
+### Architecture Note: Where Logic Belongs
+
+The sample `WebSocketClient.ts` provided below is a **transport layer** only. Packet ordering (`seq` handling), interpolation state buffering, and game state management should be implemented in your **game layer** (e.g., `GameManager.ts` or a dedicated `FishGameState.ts`), not in the WebSocket wrapper.
+
+```
+WebSocketClient.ts  → Transport (connect, send, receive raw messages)
+GameManager.ts      → Game logic (seq tracking, interpolation, state management)
+```
+
+This separation keeps the transport reusable and testable.
 
 ## Cocos Creator 3 Setup
 
