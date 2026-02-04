@@ -5,18 +5,26 @@ This guide explains how to integrate your Cocos Creator 3 games with the casino 
 ## Overview
 
 The casino platform provides:
-- REST API for authentication and game configuration
-- WebSocket server for real-time multiplayer fish games
+- WebSocket server for authentication and real-time multiplayer fish games
+- REST API for game configuration and slot machine spins
 - Static hosting for your Cocos WebGL builds
+
+## Client Flow
+
+The expected client flow is:
+
+1. **Splash Screen**: Client loads assets and scenes
+2. **Login Scene**: Player enters username/password, clicks login button
+3. **WebSocket Connection**: When login button is clicked, client establishes WebSocket connection and sends login credentials
+4. **Authentication**: Server validates credentials via WebSocket, responds with success/failure
+5. **Lobby Scene**: On successful login, player sees game selection, account settings, and balance
+6. **Game Scene**: Player selects a game, appropriate scene loads based on game type
 
 ## Important: Hosting Requirements
 
-**Your Cocos game must be hosted on the same domain as the server** to share session cookies. The recommended approach is to upload your Cocos WebGL build to the `public/cocos-games/` folder on this server.
+Your Cocos game can be hosted on any domain since authentication happens via WebSocket messages (not session cookies). The recommended approach is still to upload your Cocos WebGL build to the `public/cocos-games/` folder on this server for simplicity.
 
-If you need to host games on a different domain:
-1. Set the `CORS_ORIGINS` environment variable with allowed origins (comma-separated)
-2. Configure session cookies with `SameSite=None` and `Secure=true` (requires HTTPS)
-3. Both the game and server must use HTTPS
+If hosting on a different domain, ensure the WebSocket URL points to the correct server address.
 
 ## Server-Side Authority
 
@@ -32,26 +40,9 @@ Production: Your deployed domain
 
 ### Authentication
 
-#### Login
-```
-POST /api/auth/login
-Content-Type: application/json
+Authentication now happens via WebSocket (see WebSocket Protocol section below). The HTTP endpoints below are still available for admin/dashboard use but are not used by the game client.
 
-{
-  "username": "player1",
-  "password": "password123"
-}
-
-Response:
-{
-  "id": "uuid",
-  "username": "player1",
-  "role": "player",
-  "points": 10000
-}
-```
-
-#### Get Current User
+#### Get Current User (optional, for session recovery)
 ```
 GET /api/auth/me
 
@@ -122,14 +113,23 @@ Response:
 ### Connection
 Connect to: `ws://your-server:3001/ws`
 
-Authentication is automatic via session cookies. The server validates your session when you connect.
+The WebSocket connection is established when the player clicks the login button. Authentication happens via WebSocket messages, not session cookies.
 
 ### Message Format
 All messages are JSON objects with a `type` field.
 
 ### Client → Server Messages
 
-#### Join Fish Game
+#### Login (send immediately after WebSocket connects)
+```json
+{
+  "type": "login",
+  "username": "player1",
+  "password": "password123"
+}
+```
+
+#### Join Fish Game (send after successful login)
 ```json
 {
   "type": "joinFishGame",
@@ -169,7 +169,29 @@ All messages are JSON objects with a `type` field.
 
 ### Server → Client Messages
 
-#### Authentication Success
+#### Login Success (response to login message)
+```json
+{
+  "type": "loginSuccess",
+  "player": {
+    "id": "uuid",
+    "username": "player1",
+    "role": "player",
+    "points": 10000
+  }
+}
+```
+
+#### Login Failed (response to login message)
+```json
+{
+  "type": "loginFailed",
+  "reason": "Invalid credentials"
+}
+```
+Possible reasons: "Invalid credentials", "Account is disabled", "Only players can login via game client", "Username and password required"
+
+#### Authentication Success (legacy, for re-auth after reconnect)
 ```json
 {
   "type": "authSuccess",
@@ -502,6 +524,10 @@ export class WebSocketClient {
         }
     }
 
+    login(username: string, password: string) {
+        this.send({ type: 'login', username, password });
+    }
+
     joinFishGame(gameId: string) {
         this.send({ type: 'joinFishGame', gameId });
     }
@@ -680,17 +706,24 @@ export class NetworkManager extends Component {
     }
 
     async login(username: string, password: string): Promise<LoginResponse> {
-        this.currentUser = await this.httpClient.login(username, password);
-        return this.currentUser;
+        return new Promise((resolve, reject) => {
+            this.wsClient.on('loginSuccess', (msg) => {
+                this.currentUser = msg.player;
+                resolve(msg.player);
+            });
+            this.wsClient.on('loginFailed', (msg) => {
+                reject(new Error(msg.reason || 'Login failed'));
+            });
+            
+            this.wsClient.connect().then(() => {
+                this.wsClient.login(username, password);
+            }).catch(reject);
+        });
     }
 
     async loadGameConfig(): Promise<GameConfig> {
         this.gameConfig = await this.httpClient.getGameConfig();
         return this.gameConfig;
-    }
-
-    async connectWebSocket(): Promise<void> {
-        await this.wsClient.connect();
     }
 
     get http(): HttpClient {
@@ -731,13 +764,15 @@ Design your Cocos game canvas to match these dimensions for proper fish/bullet p
 ## Testing
 
 1. Start the server: `npm run dev`
-2. Login as a player through the web interface
-3. Open your Cocos game in the same browser (shares session cookies)
-4. The WebSocket connection will automatically authenticate
+2. Open your Cocos game
+3. Enter player credentials on the login scene
+4. The WebSocket connection authenticates via login message
+5. On success, navigate to the lobby scene
 
 ## Security Notes
 
-- Session cookies are HTTP-only and managed by the server
-- WebSocket connections require valid session authentication
+- Authentication happens via WebSocket messages with username/password
+- Use `wss://` (WebSocket Secure) in production to encrypt credentials in transit
+- Only players can login via the game client (admins/managers use the web dashboard)
 - All game outcomes are determined server-side
 - The client should only display results, never calculate wins
