@@ -8,9 +8,11 @@
     "start": "NODE_ENV=production node dist/server/index.js"
   },
   "dependencies": {
+    "@types/cookie": "^0.6.0",
     "bcrypt": "^5.1.1",
     "concurrently": "^9.2.1",
     "connect-pg-simple": "^10.0.0",
+    "cookie": "^1.1.1",
     "drizzle-orm": "^0.36.1",
     "express": "^4.21.0",
     "express-session": "^1.18.0",

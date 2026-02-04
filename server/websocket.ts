@@ -169,7 +169,18 @@ function updateGame(table: FishGameTable) {
           fish.weight
         );
         
-        if (result?.isWin) {
+        const player = table.players.get(bullet.playerId);
+        
+        if (result && 'error' in result) {
+          if (player) {
+            sendTo(player.odcket, { type: 'error', message: result.error });
+            const [updatedUser] = await db.select().from(users).where(eq(users.id, bullet.playerId)).limit(1);
+            sendTo(player.odcket, { type: 'pointsUpdate', points: updatedUser?.points || 0 });
+          }
+          return;
+        }
+        
+        if (result && result.isWin) {
           table.fish.delete(fishId);
           broadcast(table, {
             type: 'fishKilled',
@@ -178,13 +189,16 @@ function updateGame(table: FishGameTable) {
             winAmount: result.winAmount
           });
           
-          const player = table.players.get(bullet.playerId);
           if (player) {
             const [updatedUser] = await db.select().from(users).where(eq(users.id, bullet.playerId)).limit(1);
             sendTo(player.odcket, { type: 'pointsUpdate', points: updatedUser?.points || 0 });
           }
         } else {
           broadcast(table, { type: 'bulletHit', bulletId, fishId, playerId: bullet.playerId });
+          if (player) {
+            const [updatedUser] = await db.select().from(users).where(eq(users.id, bullet.playerId)).limit(1);
+            sendTo(player.odcket, { type: 'pointsUpdate', points: updatedUser?.points || 0 });
+          }
         }
       }
     });
@@ -216,9 +230,28 @@ export function setupWebSocket(wss: WebSocketServer) {
     });
   }, 50);
   
-  wss.on('connection', (ws: WebSocket) => {
-    let currentPlayerId: string | null = null;
+  wss.on('connection', async (ws: WebSocket) => {
+    const sessionUserId = (ws as any).userId as string | undefined;
+    const isAuthenticated = (ws as any).authenticated as boolean;
+    
+    if (!isAuthenticated || !sessionUserId) {
+      sendTo(ws, { type: 'authFailed', reason: 'Not authenticated' });
+      ws.close(4001, 'Unauthorized');
+      return;
+    }
+    
+    const [player] = await db.select().from(users).where(eq(users.id, sessionUserId)).limit(1);
+    if (!player || player.role !== 'player' || !player.isActive) {
+      sendTo(ws, { type: 'authFailed', reason: 'Invalid player or account disabled' });
+      ws.close(4001, 'Unauthorized');
+      return;
+    }
+    
+    const currentPlayerId = player.id;
     let currentTable: FishGameTable | null = null;
+    
+    playerConnections.set(currentPlayerId, ws);
+    sendTo(ws, { type: 'authSuccess', player: { id: player.id, username: player.username, points: player.points } });
     
     ws.on('message', async (data: Buffer) => {
       try {
@@ -226,18 +259,18 @@ export function setupWebSocket(wss: WebSocketServer) {
         
         switch (message.type) {
           case 'auth':
-            const [player] = await db.select().from(users).where(eq(users.id, message.playerId)).limit(1);
-            if (player && player.role === 'player') {
-              currentPlayerId = player.id;
-              playerConnections.set(player.id, ws);
-              sendTo(ws, { type: 'authSuccess', player: { id: player.id, username: player.username, points: player.points } });
-            } else {
-              sendTo(ws, { type: 'authFailed' });
-            }
+            sendTo(ws, { type: 'authSuccess', player: { id: player.id, username: player.username, points: player.points } });
             break;
             
           case 'joinFishGame':
             if (!currentPlayerId) return;
+            
+            const gameValidation = await CasinoEngine.validateFishGame(message.gameId);
+            if (!gameValidation.valid) {
+              sendTo(ws, { type: 'error', message: gameValidation.error || 'Invalid game' });
+              return;
+            }
+            
             currentTable = getOrCreateTable(message.gameId);
             const seatIndex = Array.from(currentTable.players.values()).map(p => p.seatIndex);
             const availableSeat = [0, 1, 2, 3].find(i => !seatIndex.includes(i)) ?? 0;
@@ -264,6 +297,18 @@ export function setupWebSocket(wss: WebSocketServer) {
             if (!currentPlayerId || !currentTable) return;
             const shootingPlayer = currentTable.players.get(currentPlayerId);
             if (!shootingPlayer) return;
+            
+            const shootGameValidation = await CasinoEngine.validateFishGame(currentTable.gameId);
+            if (!shootGameValidation.valid) {
+              sendTo(ws, { type: 'error', message: shootGameValidation.error || 'Game is no longer available' });
+              return;
+            }
+            
+            const shootPlayerValidation = await CasinoEngine.validatePlayer(currentPlayerId);
+            if (!shootPlayerValidation.valid) {
+              sendTo(ws, { type: 'error', message: shootPlayerValidation.error || 'Invalid player' });
+              return;
+            }
             
             const [currentUser] = await db.select().from(users).where(eq(users.id, currentPlayerId)).limit(1);
             if (!currentUser || currentUser.points < shootingPlayer.betAmount) {
@@ -300,8 +345,13 @@ export function setupWebSocket(wss: WebSocketServer) {
             if (!currentPlayerId || !currentTable) return;
             const betPlayer = currentTable.players.get(currentPlayerId);
             if (betPlayer) {
-              betPlayer.betAmount = Math.max(1, Math.min(100, message.amount));
-              sendTo(ws, { type: 'betSet', amount: betPlayer.betAmount });
+              const validation = await CasinoEngine.validateFishBet(currentPlayerId, message.amount);
+              if (validation.valid && validation.clampedBet) {
+                betPlayer.betAmount = validation.clampedBet;
+                sendTo(ws, { type: 'betSet', amount: betPlayer.betAmount });
+              } else {
+                sendTo(ws, { type: 'error', message: validation.error || 'Invalid bet' });
+              }
             }
             break;
             

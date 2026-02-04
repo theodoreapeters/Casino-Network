@@ -1,7 +1,7 @@
 import express, { Express, Request, Response, NextFunction } from 'express';
 import { db } from './db';
 import { users, distributorSettings, transactions, games, gameRounds } from '../shared/schema';
-import { eq, desc } from 'drizzle-orm';
+import { eq, and, desc } from 'drizzle-orm';
 import bcrypt from 'bcrypt';
 import path from 'path';
 import { CasinoEngine } from './casino-engine';
@@ -189,8 +189,8 @@ export function setupRoutes(app: Express) {
     const { gameId, betAmount } = req.body;
     try {
       const result = await CasinoEngine.spinSlot(req.session.userId!, gameId, betAmount);
-      if (!result) {
-        return res.status(400).json({ error: 'Insufficient points or invalid game' });
+      if ('error' in result) {
+        return res.status(400).json({ error: result.error });
       }
       res.json(result);
     } catch (error) {
