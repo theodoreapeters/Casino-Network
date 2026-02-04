@@ -119,6 +119,30 @@ The casino engine uses weighted probability for win determination:
 - Fish weight affects actual win probability
 - Higher multiplier fish have lower catch rates
 
+## Cocos Creator 3 Integration
+
+For professional-quality games, you can build games in Cocos Creator 3 and integrate them with this platform.
+
+### Setup
+1. Build your game in Cocos Creator 3 for Web (Mobile or Desktop)
+2. Upload the build to `public/cocos-games/`
+3. Access at `/cocos-games/index.html`
+
+### Integration Points
+- **REST API**: `/api/game-config` provides fish types, slot themes, multipliers, and player info
+- **WebSocket**: `/ws` for real-time fish game communication
+- **Authentication**: Session-based, shares cookies with main site
+
+### Documentation
+See `docs/COCOS_INTEGRATION.md` for:
+- Full API documentation
+- WebSocket message protocol
+- TypeScript client code for Cocos (WebSocketClient, HttpClient, NetworkManager)
+- Deployment instructions
+
+### CORS Configuration
+Set `CORS_ORIGINS` environment variable for allowed origins (comma-separated). Default allows localhost:5000 and localhost:3001.
+
 ## Development
 
 ```bash

@@ -1,5 +1,6 @@
 import express from 'express';
 import session from 'express-session';
+import cors from 'cors';
 import { createServer, IncomingMessage, ServerResponse } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import connectPgSimple from 'connect-pg-simple';
@@ -26,6 +27,20 @@ const sessionMiddleware = session({
   }
 });
 
+const allowedOrigins = process.env.CORS_ORIGINS 
+  ? process.env.CORS_ORIGINS.split(',')
+  : ['http://localhost:5000', 'http://localhost:3001'];
+
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(null, false);
+    }
+  },
+  credentials: true
+}));
 app.use(express.json());
 app.use(sessionMiddleware);
 

@@ -228,6 +228,70 @@ export function setupRoutes(app: Express) {
     }
   });
 
+  app.get('/api/game-config', requireAuth, requireRole('player'), async (req, res) => {
+    try {
+      const [player] = await db.select().from(users).where(eq(users.id, req.session.userId!)).limit(1);
+      if (!player) return res.status(404).json({ error: 'Player not found' });
+
+      let distributorId = player.parentId;
+      if (distributorId) {
+        const [parent] = await db.select().from(users).where(eq(users.id, distributorId)).limit(1);
+        if (parent && parent.role === 'manager' && parent.parentId) {
+          distributorId = parent.parentId;
+        }
+      }
+
+      const [settings] = distributorId 
+        ? await db.select().from(distributorSettings).where(eq(distributorSettings.distributorId, distributorId)).limit(1)
+        : [];
+
+      const gameList = await db.select().from(games).where(eq(games.isActive, true));
+
+      res.json({
+        player: {
+          id: player.id,
+          username: player.username,
+          points: player.points
+        },
+        settings: {
+          minBet: settings?.minBet || 1,
+          maxBet: settings?.maxBet || 1000
+        },
+        games: gameList,
+        fishTypes: [
+          { name: 'smallFish', multiplier: 2, displayName: 'Small Fish', description: 'Common fish, easy to catch' },
+          { name: 'mediumFish', multiplier: 5, displayName: 'Medium Fish', description: 'Moderate reward' },
+          { name: 'largeFish', multiplier: 10, displayName: 'Large Fish', description: 'Good catch!' },
+          { name: 'shark', multiplier: 25, displayName: 'Shark', description: 'Rare and valuable' },
+          { name: 'whale', multiplier: 50, displayName: 'Whale', description: 'The big prize!' }
+        ],
+        slotThemes: [
+          {
+            id: 'chinese-fortune',
+            name: 'Chinese Fortune',
+            symbols: ['🐉', '🏮', '🧧', '💰', '🎋', '🔔', '⭐'],
+            description: 'Traditional Chinese luck theme'
+          },
+          {
+            id: 'ocean-treasure',
+            name: 'Ocean Treasure',
+            symbols: ['🐠', '🐙', '🦈', '🐚', '💎', '⚓', '🔱'],
+            description: 'Deep sea adventure theme'
+          }
+        ],
+        websocket: {
+          path: '/ws',
+          protocol: 'json',
+          messageTypes: ['auth', 'joinFishGame', 'shoot', 'setBet', 'updateCannon', 'leaveTable']
+        }
+      });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to get game config' });
+    }
+  });
+
+  app.use('/cocos-games', express.static(path.join(process.cwd(), 'public/cocos-games')));
+
   app.use(express.static(path.join(process.cwd(), 'dist/public')));
   app.get('*', (req, res) => {
     if (!req.path.startsWith('/api') && !req.path.startsWith('/ws')) {
