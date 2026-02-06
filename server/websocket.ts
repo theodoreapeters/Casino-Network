@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import bcrypt from 'bcrypt';
 import { CasinoEngine } from './casino-engine';
 import { db } from './db';
-import { users } from '../shared/schema';
+import { users, games, distributorSettings } from '../shared/schema';
 import { eq } from 'drizzle-orm';
 
 interface Player {
@@ -290,6 +290,73 @@ export function setupWebSocket(wss: WebSocketServer) {
             const [player] = await db.select().from(users).where(eq(users.id, currentPlayerId)).limit(1);
             if (player) {
               sendTo(ws, { type: 'authSuccess', player: { id: player.id, username: player.username, points: player.points } });
+            }
+            break;
+            
+          case 'getGameConfig':
+            if (!currentPlayerId) {
+              sendTo(ws, { type: 'error', message: 'Not logged in' });
+              return;
+            }
+            
+            try {
+              const [configPlayer] = await db.select().from(users).where(eq(users.id, currentPlayerId)).limit(1);
+              if (!configPlayer) {
+                sendTo(ws, { type: 'error', message: 'Player not found' });
+                return;
+              }
+              
+              let distributorId = configPlayer.parentId;
+              if (distributorId) {
+                const [parent] = await db.select().from(users).where(eq(users.id, distributorId)).limit(1);
+                if (parent && parent.role === 'manager' && parent.parentId) {
+                  distributorId = parent.parentId;
+                }
+              }
+              
+              const settingsResult = distributorId 
+                ? await db.select().from(distributorSettings).where(eq(distributorSettings.distributorId, distributorId)).limit(1)
+                : [];
+              const settings = settingsResult[0];
+              
+              const gameList = await db.select().from(games).where(eq(games.isActive, true));
+              
+              sendTo(ws, {
+                type: 'gameConfig',
+                player: {
+                  id: configPlayer.id,
+                  username: configPlayer.username,
+                  points: configPlayer.points
+                },
+                settings: {
+                  minBet: settings?.minBet || 1,
+                  maxBet: settings?.maxBet || 1000
+                },
+                games: gameList,
+                fishTypes: [
+                  { name: 'smallFish', multiplier: 2, displayName: 'Small Fish', description: 'Common fish, easy to catch' },
+                  { name: 'mediumFish', multiplier: 5, displayName: 'Medium Fish', description: 'Moderate reward' },
+                  { name: 'largeFish', multiplier: 10, displayName: 'Large Fish', description: 'Good catch!' },
+                  { name: 'shark', multiplier: 25, displayName: 'Shark', description: 'Rare and valuable' },
+                  { name: 'whale', multiplier: 50, displayName: 'Whale', description: 'The big prize!' }
+                ],
+                slotThemes: [
+                  {
+                    id: 'chinese-fortune',
+                    name: 'Chinese Fortune',
+                    symbols: ['🐉', '🏮', '🧧', '💰', '🎋', '🔔', '⭐'],
+                    description: 'Traditional Chinese luck theme'
+                  },
+                  {
+                    id: 'ocean-treasure',
+                    name: 'Ocean Treasure',
+                    symbols: ['🐠', '🐙', '🦈', '🐚', '💎', '⚓', '🔱'],
+                    description: 'Deep sea adventure theme'
+                  }
+                ]
+              });
+            } catch (error) {
+              sendTo(ws, { type: 'error', message: 'Failed to load game config' });
             }
             break;
             

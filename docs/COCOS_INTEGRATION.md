@@ -129,7 +129,14 @@ All messages are JSON objects with a `type` field.
 }
 ```
 
-#### Join Fish Game (send after successful login)
+#### Get Game Config (send after successful login to load lobby data)
+```json
+{
+  "type": "getGameConfig"
+}
+```
+
+#### Join Fish Game (send after receiving game config)
 ```json
 {
   "type": "joinFishGame",
@@ -190,6 +197,31 @@ All messages are JSON objects with a `type` field.
 }
 ```
 Possible reasons: "Invalid credentials", "Account is disabled", "Only players can login via game client", "Username and password required"
+
+#### Game Config (response to getGameConfig message)
+```json
+{
+  "type": "gameConfig",
+  "player": {
+    "id": "uuid",
+    "username": "player1",
+    "points": 10000
+  },
+  "settings": {
+    "minBet": 1,
+    "maxBet": 1000
+  },
+  "games": [...],
+  "fishTypes": [
+    { "name": "smallFish", "multiplier": 2, "displayName": "Small Fish" },
+    { "name": "mediumFish", "multiplier": 5, "displayName": "Medium Fish" },
+    { "name": "largeFish", "multiplier": 10, "displayName": "Large Fish" },
+    { "name": "shark", "multiplier": 25, "displayName": "Shark" },
+    { "name": "whale", "multiplier": 50, "displayName": "Whale" }
+  ],
+  "slotThemes": [...]
+}
+```
 
 #### Authentication Success (legacy, for re-auth after reconnect)
 ```json
