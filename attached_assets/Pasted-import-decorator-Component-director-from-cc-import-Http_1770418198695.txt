@@ -1,0 +1,82 @@
+import { _decorator, Component, director } from 'cc';
+import { HttpClient, LoginResponse, GameConfig } from '../network/HttpClient';
+import { WebSocketClient, GameMessage } from '../network/WebSocketClient'; // Import GameMessage
+
+const { ccclass, property } = _decorator;
+
+@ccclass('NetworkManager')
+export class NetworkManager extends Component {
+   private static _instance: NetworkManager;
+   
+   @property
+   serverUrl: string = 'http://localhost:3001';
+   
+   private httpClient: HttpClient;
+   private wsClient: WebSocketClient;
+   private currentUser: LoginResponse | null = null;
+   private gameConfig: GameConfig | null = null;
+
+   static get instance(): NetworkManager {
+       return NetworkManager._instance;
+   }
+
+   onLoad() {
+       if (NetworkManager._instance) {
+           this.destroy();
+           return;
+       }
+       NetworkManager._instance = this;
+       // Ensure this node persists across scenes
+       director.addPersistNode(this.node);
+       
+       this.httpClient = new HttpClient(this.serverUrl);
+       // The WebSocket URL should be derived from the HTTP serverUrl
+       this.wsClient = new WebSocketClient(this.serverUrl.replace('http', 'ws') + '/ws');
+   }
+
+   // New login method using WebSocket, as per updated prompt
+   async login(username: string, password: string): Promise<LoginResponse> {
+       return new Promise((resolve, reject) => {
+           // Set up handlers for login success/failure before connecting
+           this.wsClient.onLoginSuccess((player: LoginResponse) => {
+               this.currentUser = player;
+               resolve(player);
+               // Clear handlers after successful login to prevent multiple calls
+               this.wsClient.onLoginSuccess(null);
+               this.wsClient.onLoginFailed(null);
+           });
+           this.wsClient.onLoginFailed((reason: string) => {
+               reject(new Error(reason || 'Login failed'));
+               // Clear handlers
+               this.wsClient.onLoginSuccess(null);
+               this.wsClient.onLoginFailed(null);
+           });
+           
+           // Connect WebSocket and then send login message
+           this.wsClient.connect().then(() => {
+               this.wsClient.login(username, password);
+           }).catch(reject); // Catch connection errors
+       });
+   }
+
+   async loadGameConfig(): Promise<GameConfig> {
+       this.gameConfig = await this.httpClient.getGameConfig();
+       return this.gameConfig;
+   }
+
+   get http(): HttpClient {
+       return this.httpClient;
+   }
+
+   get ws(): WebSocketClient {
+       return this.wsClient;
+   }
+
+   get user(): LoginResponse | null {
+       return this.currentUser;
+   }
+
+   get config(): GameConfig | null {
+       return this.gameConfig;
+   }
+}
