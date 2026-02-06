@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import { useLocation } from 'wouter';
 import { useAuth } from '../context/AuthContext';
 
@@ -6,54 +6,32 @@ export default function Login() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const [connecting, setConnecting] = useState(false);
   const [, navigate] = useLocation();
   const { setUser } = useAuth();
-  const wsRef = useRef<WebSocket | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    setConnecting(true);
-
-    if (wsRef.current) {
-      wsRef.current.close();
-    }
-
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws`;
     
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
-
-    ws.onopen = () => {
-      ws.send(JSON.stringify({ type: 'login', username, password }));
-    };
-
-    ws.onmessage = (event) => {
-      const message = JSON.parse(event.data);
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
       
-      switch (message.type) {
-        case 'loginSuccess':
-          setUser(message.player);
-          navigate('/games');
-          break;
-        case 'loginFailed':
-          setError(message.reason || 'Login failed');
-          setConnecting(false);
-          ws.close();
-          break;
+      if (!res.ok) {
+        const data = await res.json();
+        setError(data.error || 'Login failed');
+        return;
       }
-    };
-
-    ws.onerror = () => {
+      
+      const user = await res.json();
+      setUser(user);
+      navigate(user.role === 'player' ? '/games' : '/dashboard');
+    } catch {
       setError('Connection error');
-      setConnecting(false);
-    };
-
-    ws.onclose = () => {
-      setConnecting(false);
-    };
+    }
   };
 
   return (
@@ -79,7 +57,6 @@ export default function Login() {
               onChange={e => setUsername(e.target.value)}
               className="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 focus:border-yellow-400 focus:outline-none"
               required
-              disabled={connecting}
             />
           </div>
           
@@ -91,12 +68,11 @@ export default function Login() {
               onChange={e => setPassword(e.target.value)}
               className="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 focus:border-yellow-400 focus:outline-none"
               required
-              disabled={connecting}
             />
           </div>
           
-          <button type="submit" className="casino-button w-full text-black" disabled={connecting}>
-            {connecting ? 'Connecting...' : 'Sign In'}
+          <button type="submit" className="casino-button w-full text-black">
+            Sign In
           </button>
         </form>
         
