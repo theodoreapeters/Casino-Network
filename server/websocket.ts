@@ -242,13 +242,19 @@ export function setupWebSocket(wss: WebSocketServer) {
     });
   }, 50);
   
-  wss.on('connection', async (ws: WebSocket) => {
+  wss.on('connection', async (ws: WebSocket, req: any) => {
+    const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
+    const connId = uuidv4().slice(0, 8);
+    console.log(`[WS ${connId}] Connected from ${clientIp} | Origin: ${req.headers.origin || 'none'}`);
+    
     let currentPlayerId: string | null = null;
     let currentTable: FishGameTable | null = null;
     
     ws.on('message', async (data: Buffer) => {
       try {
         const message = JSON.parse(data.toString());
+        
+        console.log(`[WS ${connId}] ← ${message.type}${currentPlayerId ? ` (player: ${currentPlayerId.slice(0,8)})` : ''}`);
         
         switch (message.type) {
           case 'login':
@@ -276,6 +282,7 @@ export function setupWebSocket(wss: WebSocketServer) {
             (ws as any).authenticated = true;
             (ws as any).userId = user.id;
             playerConnections.set(currentPlayerId, ws);
+            console.log(`[WS ${connId}] → loginSuccess for "${user.username}" (${user.id.slice(0,8)})`);
             sendTo(ws, { 
               type: 'loginSuccess', 
               player: { id: user.id, username: user.username, role: user.role, points: user.points } 
@@ -477,11 +484,12 @@ export function setupWebSocket(wss: WebSocketServer) {
             break;
         }
       } catch (error) {
-        console.error('WebSocket message error:', error);
+        console.error(`[WS ${connId}] Message parse/handle error:`, error);
       }
     });
     
-    ws.on('close', () => {
+    ws.on('close', (code, reason) => {
+      console.log(`[WS ${connId}] Disconnected (code: ${code}, reason: "${reason || 'none'}")${currentPlayerId ? ` player: ${currentPlayerId.slice(0,8)}` : ''}`);
       if (currentPlayerId) {
         playerConnections.delete(currentPlayerId);
         if (currentTable) {
@@ -489,6 +497,10 @@ export function setupWebSocket(wss: WebSocketServer) {
           broadcast(currentTable, { type: 'playerLeft', playerId: currentPlayerId });
         }
       }
+    });
+    
+    ws.on('error', (err) => {
+      console.error(`[WS ${connId}] Error:`, err.message);
     });
   });
 }
