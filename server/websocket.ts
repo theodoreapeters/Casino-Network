@@ -48,6 +48,8 @@ const tables = new Map<string, FishGameTable>();
 const playerConnections = new Map<string, WebSocket>();
 const GAME_WIDTH = 1200;
 const GAME_HEIGHT = 800;
+const HALF_W = GAME_WIDTH / 2;
+const HALF_H = GAME_HEIGHT / 2;
 
 const tableSequences = new Map<string, number>();
 
@@ -83,10 +85,10 @@ function createFish(): Fish {
   const speed = selectedType.speed * (0.5 + Math.random());
   
   switch (side) {
-    case 0: x = -50; y = Math.random() * GAME_HEIGHT; vx = speed; vy = (Math.random() - 0.5) * speed; break;
-    case 1: x = GAME_WIDTH + 50; y = Math.random() * GAME_HEIGHT; vx = -speed; vy = (Math.random() - 0.5) * speed; break;
-    case 2: x = Math.random() * GAME_WIDTH; y = -50; vx = (Math.random() - 0.5) * speed; vy = speed; break;
-    case 3: x = Math.random() * GAME_WIDTH; y = GAME_HEIGHT + 50; vx = (Math.random() - 0.5) * speed; vy = -speed; break;
+    case 0: x = -HALF_W - 50; y = (Math.random() - 0.5) * GAME_HEIGHT; vx = speed; vy = (Math.random() - 0.5) * speed; break;
+    case 1: x = HALF_W + 50; y = (Math.random() - 0.5) * GAME_HEIGHT; vx = -speed; vy = (Math.random() - 0.5) * speed; break;
+    case 2: x = (Math.random() - 0.5) * GAME_WIDTH; y = -HALF_H - 50; vx = (Math.random() - 0.5) * speed; vy = speed; break;
+    case 3: x = (Math.random() - 0.5) * GAME_WIDTH; y = HALF_H + 50; vx = (Math.random() - 0.5) * speed; vy = -speed; break;
   }
   
   return {
@@ -143,7 +145,7 @@ function updateGame(table: FishGameTable) {
     fish.x += fish.vx;
     fish.y += fish.vy;
     
-    if (fish.x < -100 || fish.x > GAME_WIDTH + 100 || fish.y < -100 || fish.y > GAME_HEIGHT + 100) {
+    if (fish.x < -HALF_W - 100 || fish.x > HALF_W + 100 || fish.y < -HALF_H - 100 || fish.y > HALF_H + 100) {
       table.fish.delete(fishId);
     }
   });
@@ -159,8 +161,8 @@ function updateGame(table: FishGameTable) {
     bullet.x += bullet.vx;
     bullet.y += bullet.vy;
     
-    if (bullet.x <= 0 || bullet.x >= GAME_WIDTH) bullet.vx *= -1;
-    if (bullet.y <= 0 || bullet.y >= GAME_HEIGHT) bullet.vy *= -1;
+    if (bullet.x <= -HALF_W || bullet.x >= HALF_W) bullet.vx *= -1;
+    if (bullet.y <= -HALF_H || bullet.y >= HALF_H) bullet.vy *= -1;
     
     table.fish.forEach(async (fish, fishId) => {
       const dx = bullet.x - fish.x;
@@ -442,10 +444,10 @@ export function setupWebSocket(wss: WebSocketServer) {
             }
             
             const cannonPositions = [
-              { x: 100, y: GAME_HEIGHT - 50 },
-              { x: GAME_WIDTH - 100, y: GAME_HEIGHT - 50 },
-              { x: 100, y: 50 },
-              { x: GAME_WIDTH - 100, y: 50 }
+              { x: -HALF_W + 100, y: -HALF_H + 50 },
+              { x: HALF_W - 100, y: -HALF_H + 50 },
+              { x: -HALF_W + 100, y: HALF_H - 50 },
+              { x: HALF_W - 100, y: HALF_H - 50 }
             ];
             const pos = cannonPositions[shootingPlayer.seatIndex];
             const angle = message.angle;

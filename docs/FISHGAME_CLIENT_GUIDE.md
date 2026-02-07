@@ -238,8 +238,8 @@ Sent only to the player who just joined.
     {
       "id": "fish-uuid",
       "type": "smallFish",
-      "x": 150.5,
-      "y": 300.2,
+      "x": -249.5,
+      "y": 100.2,
       "vx": 2.1,
       "vy": -0.5,
       "multiplier": 2,
@@ -304,8 +304,8 @@ This is the primary synchronization message. Sent every 50ms to all players on t
     {
       "id": "fish-uuid",
       "type": "smallFish",
-      "x": 200.3,
-      "y": 310.1,
+      "x": -199.7,
+      "y": 110.1,
       "vx": 2.1,
       "vy": -0.5,
       "multiplier": 2,
@@ -317,8 +317,8 @@ This is the primary synchronization message. Sent every 50ms to all players on t
     {
       "id": "bullet-uuid",
       "playerId": "player-uuid",
-      "x": 150.0,
-      "y": 600.0,
+      "x": -450.0,
+      "y": -200.0,
       "vx": 5.0,
       "vy": -8.66,
       "betAmount": 5
@@ -353,8 +353,8 @@ Sent when a new fish is added to maintain minimum fish count.
   "fish": {
     "id": "new-fish-uuid",
     "type": "mediumFish",
-    "x": -50,
-    "y": 400,
+    "x": -650,
+    "y": 0,
     "vx": 2.0,
     "vy": 0.3,
     "multiplier": 5,
@@ -401,8 +401,8 @@ Broadcast to everyone on the table when any player shoots.
   "bullet": {
     "id": "bullet-uuid",
     "playerId": "player-uuid",
-    "x": 100,
-    "y": 750,
+    "x": -500,
+    "y": -350,
     "vx": 0.0,
     "vy": -10.0,
     "betAmount": 5
@@ -455,13 +455,13 @@ Broadcast when a bullet hits a fish but does NOT kill it (the fish survives).
 ### Cannon Positions by Seat Index
 
 ```
-Seat 0: { x: 100,  y: 750 }  — bottom-left
-Seat 1: { x: 1100, y: 750 }  — bottom-right
-Seat 2: { x: 100,  y: 50  }  — top-left
-Seat 3: { x: 1100, y: 50  }  — top-right
+Seat 0: { x: -500, y: -350 }  — bottom-left
+Seat 1: { x:  500, y: -350 }  — bottom-right
+Seat 2: { x: -500, y:  350 }  — top-left
+Seat 3: { x:  500, y:  350 }  — top-right
 ```
 
-Note: The server uses `GAME_HEIGHT - 50` for bottom seats and `50` for top seats. With `GAME_HEIGHT = 800` and `GAME_WIDTH = 1200`, the positions above are exact.
+Note: Origin is center-screen (0,0). X ranges from -600 to 600, Y from -400 to 400. Seats 0 and 1 are at the bottom (negative Y), seats 2 and 3 at the top (positive Y).
 
 ### Client Rules for Shooting
 
@@ -530,7 +530,9 @@ The server runs all physics. The client should mirror these rules for smooth loc
 ```
 Width:  1200 pixels
 Height: 800 pixels
-Origin: top-left corner (0, 0)
+Origin: center of screen (0, 0)
+X range: -600 to 600
+Y range: -400 to 400
 ```
 
 ### Fish Types
@@ -939,15 +941,17 @@ interface GameStatePlayer {
 ```typescript
 const GAME_WIDTH = 1200;
 const GAME_HEIGHT = 800;
+const HALF_W = 600;             // origin is center (0,0)
+const HALF_H = 400;             // x: -600..600, y: -400..400
 const BULLET_SPEED = 10;        // pixels per tick
 const TICK_RATE = 50;           // milliseconds (20Hz)
 const MIN_FISH_COUNT = 15;      // server maintains at least this many
 const MAX_PLAYERS_PER_TABLE = 4;
 const BULLET_LIFETIME = 10000;  // milliseconds before expiry
 const CANNON_POSITIONS = [
-  { x: 100,  y: 750 },  // seat 0: bottom-left
-  { x: 1100, y: 750 },  // seat 1: bottom-right
-  { x: 100,  y: 50  },  // seat 2: top-left
-  { x: 1100, y: 50  },  // seat 3: top-right
+  { x: -500, y: -350 },  // seat 0: bottom-left
+  { x:  500, y: -350 },  // seat 1: bottom-right
+  { x: -500, y:  350 },  // seat 2: top-left
+  { x:  500, y:  350 },  // seat 3: top-right
 ];
 ```
