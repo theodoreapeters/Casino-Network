@@ -409,7 +409,14 @@ export function setupWebSocket(wss: WebSocketServer) {
             }
             
             const [currentUser] = await db.select().from(users).where(eq(users.id, currentPlayerId)).limit(1);
-            if (!currentUser || currentUser.points < shootingPlayer.betAmount) {
+            let activeBulletCost = 0;
+            currentTable.bullets.forEach(bullet => {
+              if (bullet.playerId === currentPlayerId) {
+                activeBulletCost += bullet.betAmount;
+              }
+            });
+            const requiredPoints = activeBulletCost + shootingPlayer.betAmount;
+            if (!currentUser || currentUser.points < requiredPoints) {
               sendTo(ws, { type: 'error', message: 'Insufficient points' });
               return;
             }

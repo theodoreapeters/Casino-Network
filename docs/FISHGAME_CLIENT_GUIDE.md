@@ -445,9 +445,10 @@ Broadcast when a bullet hits a fish but does NOT kill it (the fish survives).
 - Before creating the bullet, the server validates three things in order:
   1. The game is still active (`validateFishGame`)
   2. The player account is valid and active (`validatePlayer`)
-  3. The player has enough points for the current bet amount
+  3. The player has enough points to cover **all active (in-flight) bullets plus this new shot**
+- The points check uses **reserved points**: `requiredPoints = (sum of all player's active bullet bet amounts) + currentBetAmount`. This prevents a player from firing more bullets than their balance can cover, even if no bullets have collided yet.
 - If any validation fails, the server sends an `error` message and the bullet is NOT created
-- **Points are NOT deducted when the bullet is fired.** Points are deducted later when the bullet collides with a fish (hit or kill). If the bullet expires without hitting anything, no points are deducted.
+- **Points are NOT deducted when the bullet is fired.** Points are deducted later when the bullet collides with a fish (hit or kill). If the bullet expires without hitting anything, no points are deducted. The reservation is purely an in-memory check — no database writes occur until collision.
 - Bullets expire after 10 seconds if they don't hit anything
 - Collision detection happens server-side — the client should NOT determine hits
 
@@ -623,7 +624,7 @@ Sent to the individual player after any action that changes their balance (shoot
   - Large fish (weight 0.15): 6% chance to kill
   - Shark (weight 0.04): 1.6% chance to kill
   - Whale (weight 0.01): 0.4% chance to kill
-- **Cost timing**: Points are deducted when a bullet collides with a fish (the bet cost is subtracted). If a bullet bounces around and expires without hitting any fish, no points are deducted.
+- **Cost timing**: Points are deducted when a bullet collides with a fish (the bet cost is subtracted). If a bullet bounces around and expires without hitting any fish, no points are deducted. However, the server reserves points for all active in-flight bullets when checking whether a new shot is allowed (see Section 5).
 - **Win payout**: On a successful kill, the player receives `betAmount * fishMultiplier` points (net gain = `betAmount * fishMultiplier - betAmount`)
 - **Miss payout**: On a hit that doesn't kill, the player loses `betAmount` points (net loss = `betAmount`)
 - The server sends a `pointsUpdate` message after every collision to give the client the player's new balance
