@@ -151,6 +151,7 @@ function updateGame(table: FishGameTable) {
   while (table.fish.size < 15) {
     const fish = createFish();
     table.fish.set(fish.id, fish);
+    console.log(`[Table ${table.id.slice(0,8)}] Fish spawned: ${fish.type} (x${fish.multiplier}) at (${Math.round(fish.x)}, ${Math.round(fish.y)}) vel (${fish.vx.toFixed(1)}, ${fish.vy.toFixed(1)})`);
     broadcast(table, { type: 'fishSpawn', fish });
   }
   
@@ -241,6 +242,18 @@ export function setupWebSocket(wss: WebSocketServer) {
       }
     });
   }, 50);
+  
+  setInterval(() => {
+    tables.forEach(table => {
+      if (table.players.size > 0) {
+        const fishByType: Record<string, number> = {};
+        table.fish.forEach(f => { fishByType[f.type] = (fishByType[f.type] || 0) + 1; });
+        const fishSummary = Object.entries(fishByType).map(([t, c]) => `${t}:${c}`).join(' ');
+        const playerList = Array.from(table.players.entries()).map(([id, p]) => `seat${p.seatIndex}(bet:${p.betAmount})`).join(', ');
+        console.log(`[Table ${table.id.slice(0,8)} Status] Players: ${table.players.size}/4 [${playerList}] | Fish: ${table.fish.size} [${fishSummary}] | Bullets: ${table.bullets.size}`);
+      }
+    });
+  }, 10000);
   
   wss.on('connection', async (ws: WebSocket, req: any) => {
     const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
