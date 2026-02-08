@@ -8,7 +8,7 @@ import { eq } from 'drizzle-orm';
 
 interface Player {
   id: string;
-  odcket: WebSocket;
+  socket: WebSocket;
   seatIndex: number;
   cannonAngle: number;
   betAmount: number;
@@ -50,6 +50,14 @@ const GAME_WIDTH = 1200;
 const GAME_HEIGHT = 800;
 const HALF_W = GAME_WIDTH / 2;
 const HALF_H = GAME_HEIGHT / 2;
+const BULLET_SPEED = 10;
+
+const CANNON_POSITIONS = [
+  { x: -HALF_W + 100, y: -HALF_H + 50 },
+  { x: HALF_W - 100, y: -HALF_H + 50 },
+  { x: -HALF_W + 100, y: HALF_H - 50 },
+  { x: HALF_W - 100, y: HALF_H - 50 }
+];
 
 const tableSequences = new Map<string, number>();
 
@@ -104,8 +112,8 @@ function createFish(): Fish {
 function broadcast(table: FishGameTable, message: object) {
   const data = JSON.stringify(message);
   table.players.forEach(player => {
-    if (player.odcket.readyState === WebSocket.OPEN) {
-      player.odcket.send(data);
+    if (player.socket.readyState === WebSocket.OPEN) {
+      player.socket.send(data);
     }
   });
 }
@@ -161,8 +169,10 @@ function updateGame(table: FishGameTable) {
     bullet.x += bullet.vx;
     bullet.y += bullet.vy;
     
-    if (bullet.x <= -HALF_W || bullet.x >= HALF_W) bullet.vx *= -1;
-    if (bullet.y <= -HALF_H || bullet.y >= HALF_H) bullet.vy *= -1;
+    if (bullet.x <= -HALF_W) { bullet.x = -HALF_W; bullet.vx *= -1; }
+    else if (bullet.x >= HALF_W) { bullet.x = HALF_W; bullet.vx *= -1; }
+    if (bullet.y <= -HALF_H) { bullet.y = -HALF_H; bullet.vy *= -1; }
+    else if (bullet.y >= HALF_H) { bullet.y = HALF_H; bullet.vy *= -1; }
     
     table.fish.forEach(async (fish, fishId) => {
       const dx = bullet.x - fish.x;
@@ -186,9 +196,9 @@ function updateGame(table: FishGameTable) {
         
         if (result && 'error' in result) {
           if (player) {
-            sendTo(player.odcket, { type: 'error', message: result.error });
+            sendTo(player.socket, { type: 'error', message: result.error });
             const [updatedUser] = await db.select().from(users).where(eq(users.id, bullet.playerId)).limit(1);
-            sendTo(player.odcket, { type: 'pointsUpdate', points: updatedUser?.points || 0 });
+            sendTo(player.socket, { type: 'pointsUpdate', points: updatedUser?.points || 0 });
           }
           return;
         }
@@ -204,13 +214,13 @@ function updateGame(table: FishGameTable) {
           
           if (player) {
             const [updatedUser] = await db.select().from(users).where(eq(users.id, bullet.playerId)).limit(1);
-            sendTo(player.odcket, { type: 'pointsUpdate', points: updatedUser?.points || 0 });
+            sendTo(player.socket, { type: 'pointsUpdate', points: updatedUser?.points || 0 });
           }
         } else {
           broadcast(table, { type: 'bulletHit', bulletId, fishId, playerId: bullet.playerId });
           if (player) {
             const [updatedUser] = await db.select().from(users).where(eq(users.id, bullet.playerId)).limit(1);
-            sendTo(player.odcket, { type: 'pointsUpdate', points: updatedUser?.points || 0 });
+            sendTo(player.socket, { type: 'pointsUpdate', points: updatedUser?.points || 0 });
           }
         }
       }
@@ -350,6 +360,15 @@ export function setupWebSocket(wss: WebSocketServer) {
                   username: configPlayer.username,
                   points: configPlayer.points
                 },
+                gameWorld: {
+                  width: GAME_WIDTH,
+                  height: GAME_HEIGHT,
+                  origin: 'center',
+                  xRange: [-HALF_W, HALF_W],
+                  yRange: [-HALF_H, HALF_H],
+                  cannonPositions: CANNON_POSITIONS,
+                  bulletSpeed: BULLET_SPEED
+                },
                 settings: {
                   minBet: settings?.minBet || 1,
                   maxBet: settings?.maxBet || 1000
@@ -397,7 +416,7 @@ export function setupWebSocket(wss: WebSocketServer) {
             
             currentTable.players.set(currentPlayerId, {
               id: currentPlayerId,
-              odcket: ws,
+              socket: ws,
               seatIndex: availableSeat,
               cannonAngle: 0,
               betAmount: 1
@@ -407,6 +426,15 @@ export function setupWebSocket(wss: WebSocketServer) {
               type: 'joinedTable',
               tableId: currentTable.id,
               seatIndex: availableSeat,
+              gameWorld: {
+                width: GAME_WIDTH,
+                height: GAME_HEIGHT,
+                origin: 'center',
+                xRange: [-HALF_W, HALF_W],
+                yRange: [-HALF_H, HALF_H],
+                cannonPositions: CANNON_POSITIONS,
+                bulletSpeed: BULLET_SPEED
+              },
               fish: Array.from(currentTable.fish.values())
             });
             
@@ -443,23 +471,16 @@ export function setupWebSocket(wss: WebSocketServer) {
               return;
             }
             
-            const cannonPositions = [
-              { x: -HALF_W + 100, y: -HALF_H + 50 },
-              { x: HALF_W - 100, y: -HALF_H + 50 },
-              { x: -HALF_W + 100, y: HALF_H - 50 },
-              { x: HALF_W - 100, y: HALF_H - 50 }
-            ];
-            const pos = cannonPositions[shootingPlayer.seatIndex];
+            const pos = CANNON_POSITIONS[shootingPlayer.seatIndex];
             const angle = message.angle;
-            const speed = 10;
             
             const bullet: Bullet & { createdAt: number } = {
               id: uuidv4(),
               playerId: currentPlayerId,
               x: pos.x,
               y: pos.y,
-              vx: Math.cos(angle) * speed,
-              vy: Math.sin(angle) * speed,
+              vx: Math.cos(angle) * BULLET_SPEED,
+              vy: Math.sin(angle) * BULLET_SPEED,
               betAmount: shootingPlayer.betAmount,
               createdAt: Date.now()
             };

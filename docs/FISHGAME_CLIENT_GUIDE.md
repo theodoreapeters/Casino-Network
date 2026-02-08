@@ -164,6 +164,20 @@ No additional fields. Must be sent after `loginSuccess`.
     "username": "player1",
     "points": 10000
   },
+  "gameWorld": {
+    "width": 1200,
+    "height": 800,
+    "origin": "center",
+    "xRange": [-600, 600],
+    "yRange": [-400, 400],
+    "cannonPositions": [
+      { "x": -500, "y": -350 },
+      { "x": 500, "y": -350 },
+      { "x": -500, "y": 350 },
+      { "x": 500, "y": 350 }
+    ],
+    "bulletSpeed": 10
+  },
   "settings": {
     "minBet": 1,
     "maxBet": 100
@@ -193,6 +207,7 @@ No additional fields. Must be sent after `loginSuccess`.
 | Field | Type | Description |
 |-------|------|-------------|
 | `player` | object | Fresh player data (id, username, points) |
+| `gameWorld` | object | Game world dimensions and coordinate system (see `gameWorld` object table above) |
 | `settings.minBet` | number | Minimum allowed bet amount (default 1) |
 | `settings.maxBet` | number | Maximum allowed bet from distributor settings (default 1000). Note: for fish games, the server independently clamps bets to a max of 100 via `setBet` validation, regardless of this value. Use `min(maxBet, 100)` for your fish game bet UI. |
 | `games` | array | List of active games, filter by `type: "fish"` for fish games |
@@ -234,6 +249,20 @@ Sent only to the player who just joined.
   "type": "joinedTable",
   "tableId": "table-uuid",
   "seatIndex": 0,
+  "gameWorld": {
+    "width": 1200,
+    "height": 800,
+    "origin": "center",
+    "xRange": [-600, 600],
+    "yRange": [-400, 400],
+    "cannonPositions": [
+      { "x": -500, "y": -350 },
+      { "x": 500, "y": -350 },
+      { "x": -500, "y": 350 },
+      { "x": 500, "y": 350 }
+    ],
+    "bulletSpeed": 10
+  },
   "fish": [
     {
       "id": "fish-uuid",
@@ -254,7 +283,20 @@ Sent only to the player who just joined.
 |-------|------|-------------|
 | `tableId` | string (UUID) | The table you were placed on |
 | `seatIndex` | number (0-3) | Your assigned seat position |
+| `gameWorld` | object | Game world dimensions and coordinate info (see below) |
 | `fish` | array | All fish currently alive on the table |
+
+#### `gameWorld` object
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `width` | number | Game world width in pixels (1200) |
+| `height` | number | Game world height in pixels (800) |
+| `origin` | string | Always `"center"` — (0,0) is center of screen |
+| `xRange` | [number, number] | Min/max X coordinates [-600, 600] |
+| `yRange` | [number, number] | Min/max Y coordinates [-400, 400] |
+| `cannonPositions` | array | Array of {x, y} for each seat index (0-3) |
+| `bulletSpeed` | number | Bullet speed in pixels per tick (10) |
 
 ### Server → All Players: `playerJoined`
 
@@ -573,12 +615,14 @@ Fish move in a straight line. No turning, no acceleration. They simply drift acr
 bullet.x += bullet.vx
 bullet.y += bullet.vy
 
-// Ricochet off walls
-if (bullet.x <= 0 || bullet.x >= 1200) bullet.vx *= -1
-if (bullet.y <= 0 || bullet.y >= 800)  bullet.vy *= -1
+// Ricochet off walls (with position clamping to prevent edge-sticking)
+if (bullet.x <= -600) { bullet.x = -600; bullet.vx *= -1; }
+else if (bullet.x >= 600) { bullet.x = 600; bullet.vx *= -1; }
+if (bullet.y <= -400) { bullet.y = -400; bullet.vy *= -1; }
+else if (bullet.y >= 400) { bullet.y = 400; bullet.vy *= -1; }
 ```
 
-Bullets bounce off all four edges of the screen. They keep bouncing until they hit a fish or expire after 10 seconds.
+Bullets bounce off all four edges of the screen (at ±600 x, ±400 y). The position is clamped to the boundary on bounce to prevent the bullet overshooting and getting stuck. Bullets keep bouncing until they hit a fish or expire after 10 seconds.
 
 ### Collision Detection (server-side only)
 
