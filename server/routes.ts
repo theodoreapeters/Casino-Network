@@ -5,7 +5,7 @@ import { eq, and, desc } from 'drizzle-orm';
 import bcrypt from 'bcrypt';
 import path from 'path';
 import { CasinoEngine } from './casino-engine';
-import { validateSessionToken } from './websocket';
+import { validateSessionToken, createWsAuthToken } from './websocket';
 
 declare module 'express-session' {
   interface SessionData {

@@ -47,6 +47,7 @@ interface Bullet {
 const tables = new Map<string, FishGameTable>();
 const playerConnections = new Map<string, WebSocket>();
 const sessionTokens = new Map<string, { userId: string; expires: number }>();
+const wsAuthTokens = new Map<string, { userId: string; expires: number }>();
 
 export function validateSessionToken(token: string): string | null {
   const entry = sessionTokens.get(token);
@@ -55,6 +56,13 @@ export function validateSessionToken(token: string): string | null {
   if (Date.now() > entry.expires) return null;
   return entry.userId;
 }
+
+export function createWsAuthToken(userId: string): string {
+  const token = uuidv4();
+  wsAuthTokens.set(token, { userId, expires: Date.now() + 30000 });
+  return token;
+}
+
 const GAME_WIDTH = 1200;
 const GAME_HEIGHT = 800;
 const HALF_W = GAME_WIDTH / 2;
@@ -326,6 +334,29 @@ export function setupWebSocket(wss: WebSocketServer) {
             });
             break;
             
+          case 'tokenAuth': {
+            const wsToken = message.token;
+            const wsEntry = wsAuthTokens.get(wsToken);
+            if (!wsEntry || Date.now() > wsEntry.expires) {
+              wsAuthTokens.delete(wsToken);
+              sendTo(ws, { type: 'authFailed', reason: 'Invalid or expired token' });
+              return;
+            }
+            wsAuthTokens.delete(wsToken);
+            const [tokenPlayer] = await db.select().from(users).where(eq(users.id, wsEntry.userId)).limit(1);
+            if (!tokenPlayer || tokenPlayer.role !== 'player') {
+              sendTo(ws, { type: 'authFailed', reason: 'Player not found' });
+              return;
+            }
+            currentPlayerId = tokenPlayer.id;
+            (ws as any).authenticated = true;
+            (ws as any).userId = tokenPlayer.id;
+            playerConnections.set(currentPlayerId, ws);
+            console.log(`[WS ${connId}] tokenAuth → authSuccess for "${tokenPlayer.username}"`);
+            sendTo(ws, { type: 'authSuccess', player: { id: tokenPlayer.id, username: tokenPlayer.username, points: tokenPlayer.points } });
+            break;
+          }
+
           case 'auth':
             if (!currentPlayerId) {
               sendTo(ws, { type: 'authFailed', reason: 'Not logged in' });
