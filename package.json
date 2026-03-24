@@ -17,6 +17,7 @@
     "drizzle-orm": "^0.36.1",
     "express": "^4.21.0",
     "express-session": "^1.18.0",
+    "pixi.js": "^7.4.3",
     "postgres": "^3.4.4",
     "uuid": "^10.0.0",
     "ws": "^8.18.0"

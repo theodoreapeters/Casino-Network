@@ -5,6 +5,7 @@ import { eq, and, desc } from 'drizzle-orm';
 import bcrypt from 'bcrypt';
 import path from 'path';
 import { CasinoEngine } from './casino-engine';
+import { validateSessionToken } from './websocket';
 
 declare module 'express-session' {
   interface SessionData {
@@ -30,6 +31,22 @@ function requireRole(...roles: string[]) {
 }
 
 export function setupRoutes(app: Express) {
+  app.post('/api/auth/ws-session', async (req, res) => {
+    const { sessionToken } = req.body;
+    if (!sessionToken) return res.status(400).json({ error: 'Missing token' });
+    const userId = validateSessionToken(sessionToken);
+    if (!userId) return res.status(403).json({ error: 'Invalid or expired token' });
+    try {
+      const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+      if (!user || user.role !== 'player') return res.status(403).json({ error: 'Invalid' });
+      req.session.userId = user.id;
+      req.session.role = user.role;
+      res.json({ ok: true });
+    } catch {
+      res.status(500).json({ error: 'Failed' });
+    }
+  });
+
   app.post('/api/auth/login', async (req, res) => {
     const { username, password } = req.body;
     try {

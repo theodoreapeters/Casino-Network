@@ -1,11 +1,24 @@
 import { useState, useEffect } from 'react';
-import { Route, Switch } from 'wouter';
-import Login from './pages/Login';
+import { Route, Switch, useLocation } from 'wouter';
+import PlayerLogin from './pages/player/PlayerLogin';
+import AdminLogin from './pages/admin/AdminLogin';
 import Dashboard from './pages/Dashboard';
-import GameLobby from './pages/GameLobby';
+import GameLobby from './pages/player/GameLobby';
 import SlotGame from './pages/SlotGame';
 import FishGame from './pages/FishGame';
 import { AuthContext, User } from './context/AuthContext';
+
+function HomeRedirect({ user }: { user: User | null }) {
+  const [, navigate] = useLocation();
+  useEffect(() => {
+    if (user) {
+      navigate(user.role === 'player' ? '/lobby' : '/dashboard');
+    } else {
+      navigate('/login');
+    }
+  }, [user, navigate]);
+  return null;
+}
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -33,13 +46,14 @@ export default function App() {
     <AuthContext.Provider value={{ user, setUser }}>
       <div className="min-h-screen">
         <Switch>
-          <Route path="/login" component={Login} />
+          <Route path="/login" component={PlayerLogin} />
+          <Route path="/admin/login" component={AdminLogin} />
           <Route path="/dashboard" component={Dashboard} />
-          <Route path="/games" component={GameLobby} />
+          <Route path="/lobby" component={GameLobby} />
           <Route path="/games/slot/:id" component={SlotGame} />
           <Route path="/games/fish/:id" component={FishGame} />
           <Route path="/">
-            {user ? (user.role === 'player' ? <GameLobby /> : <Dashboard />) : <Login />}
+            <HomeRedirect user={user} />
           </Route>
         </Switch>
       </div>

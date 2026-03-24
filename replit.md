@@ -7,15 +7,17 @@ A multiplayer online casino platform with a hierarchical user management system 
 This platform features:
 - **Admin Portal**: Web dashboard for distributors and managers to manage users, adjust win rates, and view reports
 - **Game Server**: Real-time WebSocket server for multiplayer game communication
-- **Game Client**: HTML5 Canvas-based games including slot machines and fish shooter games
+- **Player Client**: React-based game lobby with configurable carousel game selection (6 modes) and PixiJS-ready game rendering
+- **Game Server**: Center-origin coordinate system (0,0 at screen center, x: -600..600, y: -400..400)
 
 ## Architecture
 
 ### Tech Stack
 - **Backend**: Node.js + Express + WebSocket (ws)
 - **Database**: PostgreSQL with Drizzle ORM
-- **Frontend**: React + Vite + TailwindCSS
+- **Frontend**: React + Vite + TailwindCSS + PixiJS (for game rendering)
 - **Real-time**: WebSocket for multiplayer fish shooter games
+- **Authentication**: WebSocket-based login for players, HTTP-based login for admin/managers
 
 ### User Hierarchy
 1. **Distributors**: Top-level operators who can create managers, set game win rates (RTP), and manage points
@@ -42,12 +44,25 @@ This platform features:
 ```
 ├── client/                 # React frontend
 │   ├── src/
-│   │   ├── pages/         # Page components
-│   │   │   ├── Login.tsx
+│   │   ├── pages/
+│   │   │   ├── player/    # Player-facing pages
+│   │   │   │   ├── PlayerLogin.tsx   # WebSocket-based player login
+│   │   │   │   └── GameLobby.tsx     # Game lobby with carousel selection
+│   │   │   ├── admin/     # Admin-facing pages
+│   │   │   │   └── AdminLogin.tsx    # HTTP-based admin/manager login
 │   │   │   ├── Dashboard.tsx
-│   │   │   ├── GameLobby.tsx
 │   │   │   ├── SlotGame.tsx
 │   │   │   └── FishGame.tsx
+│   │   ├── components/
+│   │   │   ├── lobby/     # Lobby UI components
+│   │   │   │   ├── TopBar.tsx        # Player info, balance, messages
+│   │   │   │   ├── SideNav.tsx       # Game type filter (All/Fish/Slots)
+│   │   │   │   ├── BottomNav.tsx     # Daily Bonus, Leaderboard, Settings, News
+│   │   │   │   ├── GameTile.tsx      # Individual game card
+│   │   │   │   └── SettingsPanel.tsx # Carousel mode picker (6 modes)
+│   │   │   └── carousel/  # Carousel implementations
+│   │   │       ├── LinearCarousel.tsx    # Horizontal/vertical flat scroll
+│   │   │       └── CircularCarousel.tsx  # 4 arc modes with 3D perspective
 │   │   ├── context/       # React contexts
 │   │   ├── App.tsx
 │   │   └── main.tsx

@@ -46,6 +46,15 @@ interface Bullet {
 
 const tables = new Map<string, FishGameTable>();
 const playerConnections = new Map<string, WebSocket>();
+const sessionTokens = new Map<string, { userId: string; expires: number }>();
+
+export function validateSessionToken(token: string): string | null {
+  const entry = sessionTokens.get(token);
+  if (!entry) return null;
+  sessionTokens.delete(token);
+  if (Date.now() > entry.expires) return null;
+  return entry.userId;
+}
 const GAME_WIDTH = 1200;
 const GAME_HEIGHT = 800;
 const HALF_W = GAME_WIDTH / 2;
@@ -307,10 +316,13 @@ export function setupWebSocket(wss: WebSocketServer) {
             (ws as any).authenticated = true;
             (ws as any).userId = user.id;
             playerConnections.set(currentPlayerId, ws);
+            const sessionToken = uuidv4();
+            sessionTokens.set(sessionToken, { userId: user.id, expires: Date.now() + 30000 });
             console.log(`[WS ${connId}] → loginSuccess for "${user.username}" (${user.id.slice(0,8)})`);
             sendTo(ws, { 
               type: 'loginSuccess', 
-              player: { id: user.id, username: user.username, role: user.role, points: user.points } 
+              player: { id: user.id, username: user.username, role: user.role, points: user.points },
+              sessionToken
             });
             break;
             
